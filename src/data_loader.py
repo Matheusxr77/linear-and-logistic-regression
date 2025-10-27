@@ -10,6 +10,23 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
 }
 
+# novo helper para retry ao chamar .get_data_frames()
+def _get_data_frames_with_retry(endpoint, max_retries: int = 5, backoff_factor: float = 1.0):
+    """
+    Tenta endpoint.get_data_frames() várias vezes com backoff exponencial.
+    Retorna a lista de DataFrames em caso de sucesso ou [] em caso de falha.
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            dfs = endpoint.get_data_frames()
+            return dfs or []
+        except Exception as e:
+            print(f"Tentativa {attempt} falhou: {e}")
+            if attempt == max_retries:
+                print("Máximo de tentativas atingido.")
+                return []
+            time.sleep(backoff_factor * attempt)
+
 def get_team_id(team_name: str) -> int:
     """
     Obtém o ID de um time da NBA pelo seu nome completo.
@@ -47,12 +64,13 @@ def get_team_game_logs(team_id: int, season: str) -> pd.DataFrame:
         game_finder = leaguegamefinder.LeagueGameFinder(
             team_id_nullable=team_id,
             season_nullable=season,
-            season_type_nullable='Regular Season',
-            headers=HEADERS,
-            timeout=30
+            season_type_nullable='Regular Season'
         )
         time.sleep(0.6)  # Pausa para evitar sobrecarregar a API
-        games_df = game_finder.get_data_frames()
+        games_dfs = _get_data_frames_with_retry(game_finder, max_retries=5, backoff_factor=1)
+        if not games_dfs:
+            return pd.DataFrame()
+        games_df = games_dfs[0]
         print("Logs de jogos do time obtidos com sucesso.")
         return games_df
     except Exception as e:
@@ -75,12 +93,13 @@ def get_all_games_for_season(season: str) -> pd.DataFrame:
         game_finder = leaguegamefinder.LeagueGameFinder(
             league_id_nullable='00', # '00' para NBA
             season_nullable=season,
-            season_type_nullable='Regular Season',
-            headers=HEADERS,
-            timeout=60
+            season_type_nullable='Regular Season'
         )
         time.sleep(0.6)
-        all_games_df = game_finder.get_data_frames()
+        all_games_dfs = _get_data_frames_with_retry(game_finder, max_retries=5, backoff_factor=1)
+        if not all_games_dfs:
+            return pd.DataFrame()
+        all_games_df = all_games_dfs[0]
         print("Todos os jogos da temporada obtidos com sucesso.")
         return all_games_df
     except Exception as e:
@@ -100,30 +119,38 @@ def get_player_game_logs(team_id: int, season: str) -> pd.DataFrame:
     """
     print(f"Buscando elenco do time ID {team_id}...")
     try:
-        roster = commonteamroster.CommonTeamRoster(
-            team_id=team_id, 
-            season=season,
-            headers=HEADERS,
-            timeout=30
-        ).get_data_frames()
+        roster_endpoint = commonteamroster.CommonTeamRoster(
+            team_id=team_id,
+            season=season
+        )
         time.sleep(0.6)
+        roster_dfs = _get_data_frames_with_retry(roster_endpoint, max_retries=5, backoff_factor=1)
+        if not roster_dfs:
+            print("Não foi possível obter o elenco.")
+            return pd.DataFrame()
+        roster_df = roster_dfs[0]
     except Exception as e:
         print(f"Erro ao obter o elenco: {e}")
         return pd.DataFrame()
 
     all_player_logs = []
-    player_ids = roster.unique()
+    # extrai corretamente os IDs dos jogadores
+    player_ids = roster_df['PLAYER_ID'].unique()
     print(f"Encontrados {len(player_ids)} jogadores. Buscando logs de jogos individuais...")
 
     for player_id in player_ids:
         try:
-            player_logs = playergamelog.PlayerGameLog(
-                player_id=player_id, 
-                season=season,
-                headers=HEADERS,
-                timeout=30
-            ).get_data_frames()
-            all_player_logs.append(player_logs)
+            player_endpoint = playergamelog.PlayerGameLog(
+                player_id=player_id,
+                season=season
+            )
+            player_dfs = _get_data_frames_with_retry(player_endpoint, max_retries=4, backoff_factor=0.8)
+            if not player_dfs:
+                print(f"Sem logs para o jogador ID {player_id}.")
+                continue
+            # player_dfs geralmente retorna uma lista; pegamos o primeiro DataFrame
+            player_log_df = player_dfs[0]
+            all_player_logs.append(player_log_df)
             print(f"Logs obtidos para o jogador ID {player_id}.")
             time.sleep(0.6)
         except Exception as e:
