@@ -36,7 +36,20 @@ def fetch_and_save_data(team_name: str = "Los Angeles Lakers", season: str = "20
     
     # Limpa dados
     print("\n3. Limpando dados...")
-    team_games_clean = clean_data(team_games_raw)
+    print("Colunas recebidas em team_games_raw:", list(team_games_raw.columns))
+
+    try:
+        team_games_clean = clean_data(team_games_raw)
+    except ValueError as e:
+        print("Erro ao limpar dados:", e)
+        # salva CSV de debug para inspeção manual
+        try:
+            team_games_raw.to_csv("debug_team_games_raw.csv", index=False)
+            print("Arquivo debug_team_games_raw.csv salvo para inspeção.")
+        except Exception as save_e:
+            print("Falha ao salvar arquivo de debug:", save_e)
+        raise
+    
     all_games_clean = clean_data(all_games_raw)
     
     # Feature engineering
