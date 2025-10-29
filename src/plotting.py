@@ -30,15 +30,6 @@ def plot_predicted_vs_actual(y_test, y_pred, y_label):
     ax.legend()
     return fig
 
-# def plot_regression_confidence_interval(df, x_var, y_var):
-#     """
-#     Gera um gráfico de tendência com intervalo de confiança.
-#     """
-#     fig, ax = plt.subplots()
-#     sns.regplot(x=x_var, y=y_var, data=df, ax=ax, ci=95, scatter_kws={'alpha':0.3})
-#     ax.set_title(f'Tendência de {y_var} por {x_var} com Intervalo de Confiança de 95%')
-#     return fig
-
 def plot_regression_confidence_interval(df, x_var, y_var):
     """
     Gera gráficos de tendência com intervalo de confiança de 95%.
