@@ -11,6 +11,8 @@ from src.plotting import (
 )
 import seaborn as sns
 import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.linear_model import LogisticRegression
 
 st.set_page_config(page_title="Regressão Logística", layout="wide")
 
@@ -29,11 +31,15 @@ if 'team_data' not in st.session_state or st.session_state['team_data'].empty:
 else:
     df = st.session_state['team_data']
 
+    # ✅ Garante que exista uma coluna WIN
+    if 'WL' in df.columns and 'WIN' not in df.columns:
+        df['WIN'] = df['WL'].apply(lambda x: 1 if x == 'W' else 0)
+
     # Define as colunas numéricas que podem ser usadas como variáveis
     numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-    # Remove a variável alvo 'WIN' da lista de seleção
     if 'WIN' in numeric_cols:
         numeric_cols.remove('WIN')
+
 
     # --- Interface do Usuário ---
     independent_vars = st.multiselect(
@@ -104,14 +110,35 @@ else:
                 st.pyplot(plot_feature_importance(results['coefficients'], "Impacto das Variáveis na Probabilidade de Vitória"))
                 st.caption("Este gráfico exibe os coeficientes do modelo. Coeficientes positivos aumentam a probabilidade de vitória, enquanto negativos a diminuem. A magnitude indica a força do impacto.")
 
-                # Gráfico 4: Diagrama de Dispersão com Curva Logística
+                # Gráfico 4: Diagrama de Dispersão com Curva de Regressão Logística
                 st.markdown("#### 4. Diagrama de Dispersão com Curva de Regressão Logística")
-                st.pyplot(plot_logistic_regression_curve(
-                    df=df,
-                    x_var=independent_vars,
-                    y_var='WIN'
-                ))
-                st.caption(f"Este gráfico mostra como a probabilidade de vitória (eixo Y) muda com base na variação da primeira variável selecionada ({independent_vars}). A curva em 'S' é a assinatura do modelo logístico.")
+
+                if len(independent_vars) > 0:
+
+                    x_col = independent_vars[0]
+                    X = df[[x_col]].values
+                    y = df['WIN'].values
+
+                    # Treina o modelo logístico
+                    model = LogisticRegression()
+                    model.fit(X, y)
+
+                    # Gera curva sigmoide
+                    X_test = np.linspace(X.min(), X.max(), 300).reshape(-1, 1)
+                    y_prob = model.predict_proba(X_test)[:, 1]
+
+                    fig, ax = plt.subplots()
+                    ax.scatter(X, y, alpha=0.3, label="Dados reais")
+                    ax.plot(X_test, y_prob, color="orange", linewidth=2, label="Curva logística (sigmoide)")
+                    ax.set_title(f"Probabilidade de Vitória vs. {x_col}")
+                    ax.set_xlabel(x_col)
+                    ax.set_ylabel("Probabilidade de Vitória (WIN)")
+                    ax.legend()
+
+                    st.pyplot(fig)
+                    st.caption(f"Este gráfico mostra como a probabilidade de vitória muda com base na variável {x_col}. A curva em 'S' é característica da regressão logística.")
+                else:
+                    st.info("Selecione pelo menos uma variável independente para gerar o gráfico.")
 
                 # Gráfico 5: Gráfico de Tendência com Intervalo de Confiança
                 st.markdown("#### 5. Gráfico de Tendência com Intervalo de Confiança de 95%")
