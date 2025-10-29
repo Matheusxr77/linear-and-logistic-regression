@@ -30,14 +30,44 @@ def plot_predicted_vs_actual(y_test, y_pred, y_label):
     ax.legend()
     return fig
 
+# def plot_regression_confidence_interval(df, x_var, y_var):
+#     """
+#     Gera um gráfico de tendência com intervalo de confiança.
+#     """
+#     fig, ax = plt.subplots()
+#     sns.regplot(x=x_var, y=y_var, data=df, ax=ax, ci=95, scatter_kws={'alpha':0.3})
+#     ax.set_title(f'Tendência de {y_var} por {x_var} com Intervalo de Confiança de 95%')
+#     return fig
+
 def plot_regression_confidence_interval(df, x_var, y_var):
     """
-    Gera um gráfico de tendência com intervalo de confiança.
+    Gera gráficos de tendência com intervalo de confiança de 95%.
+    Se houver mais de uma variável independente, gera um gráfico para cada uma.
     """
-    fig, ax = plt.subplots()
-    sns.regplot(x=x_var, y=y_var, data=df, ax=ax, ci=95, scatter_kws={'alpha':0.3})
-    ax.set_title(f'Tendência de {y_var} por {x_var} com Intervalo de Confiança de 95%')
+
+    # Se for apenas uma variável, converte para lista para simplificar o loop
+    if isinstance(x_var, str):
+        x_var = [x_var]
+
+    fig, axes = plt.subplots(
+        nrows=1,
+        ncols=len(x_var),
+        figsize=(6 * len(x_var), 5)
+    )
+
+    # Garante que axes seja iterável
+    if len(x_var) == 1:
+        axes = [axes]
+
+    for ax, x in zip(axes, x_var):
+        sns.regplot(x=x, y=y_var, data=df, ax=ax, ci=95, scatter_kws={'alpha': 0.3})
+        ax.set_title(f'Tendência de {y_var} por {x} (IC 95%)')
+        ax.set_xlabel(x)
+        ax.set_ylabel(y_var)
+
+    plt.tight_layout()
     return fig
+
 
 def plot_regression_confusion_matrix(y_test, y_pred):
     """
