@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 from src.data_preprocessing import clean_data, feature_engineering, preprocess_player_data

@@ -1,5 +1,3 @@
-# src/data_loader.py
-
 import pandas as pd
 import time
 from nba_api.stats.static import teams

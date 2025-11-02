@@ -1,5 +1,3 @@
-# Trecho de src/plotting.py
-
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, roc_curve, auc
