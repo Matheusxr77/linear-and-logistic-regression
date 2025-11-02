@@ -94,11 +94,11 @@ else:
                 st.pyplot(plot_regression_scatter(
                     y_test=results['y_test'],
                     y_pred=results['y_pred'],
-                    x_test_col=results['X_test'][independent_vars],
-                    x_label=independent_vars,
+                    x_test_col=results['X_test'].iloc[:, 0],
+                    x_label=independent_vars[0],
                     y_label=dependent_var
                 ))
-                st.caption(f"Este gráfico mostra a relação entre a variável dependente ({dependent_var}) e a primeira variável independente selecionada ({independent_vars}), com a linha de regressão ajustada pelo modelo.")
+                st.caption(f"Este gráfico mostra a relação entre a variável dependente ({dependent_var}) e a primeira variável independente selecionada ({independent_vars[0]}), com a linha de regressão ajustada pelo modelo.")
 
                 # Gráfico 2: Previsão vs. Realidade
                 st.markdown("#### 2. Gráfico de Previsão vs. Realidade")

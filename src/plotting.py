@@ -8,7 +8,13 @@ import numpy as np
 def plot_regression_scatter(y_test, y_pred, x_test_col, x_label, y_label):
     """
     Gera um Diagrama de Dispersão com Linha de Regressão.
+    Adaptado para aceitar múltiplas variáveis independentes.
     """
+    # Se x_test_col é um DataFrame com múltiplas colunas, usa apenas a primeira
+    if hasattr(x_test_col, 'shape') and len(x_test_col.shape) > 1 and x_test_col.shape[1] > 1:
+        x_test_col = x_test_col.iloc[:, 0]
+        x_label = x_test_col.name if x_test_col.name else x_label[0]
+    
     fig, ax = plt.subplots()
     sns.regplot(x=x_test_col, y=y_test, ax=ax, scatter_kws={'alpha':0.5}, label='Dados Reais')
     ax.set_xlabel(x_label)

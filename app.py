@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 from src.data_preprocessing import clean_data, feature_engineering, preprocess_player_data
 from src.data_saver import load_team_data, load_all_games_data, load_player_data, data_exists
+from src.data_loader import get_team_id, get_team_game_logs, get_all_games_for_season, get_player_game_logs
 
 # Configuração da página principal do Streamlit
 st.set_page_config(

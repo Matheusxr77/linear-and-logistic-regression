@@ -34,9 +34,11 @@ else:
     # ✅ Garante que exista uma coluna WIN
     if 'WL' in df.columns and 'WIN' not in df.columns:
         df['WIN'] = df['WL'].apply(lambda x: 1 if x == 'W' else 0)
+        st.session_state['team_data'] = df  # ✅ Atualiza o estado da sessão
 
     # Define as colunas numéricas que podem ser usadas como variáveis
     numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+    # Remove a coluna WIN da lista de variáveis independentes
     if 'WIN' in numeric_cols:
         numeric_cols.remove('WIN')
 

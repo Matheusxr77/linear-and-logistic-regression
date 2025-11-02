@@ -77,7 +77,8 @@ def train_logistic_regression(df: pd.DataFrame, independent_vars: list):
     report = classification_report(y_test, y_pred)
     cm = confusion_matrix(y_test, y_pred)
     
-    coefficients = pd.DataFrame(model.coef_, X.columns, columns=['Coefficient'])
+    # Fix: Flatten the 2D coefficient array and create DataFrame correctly
+    coefficients = pd.DataFrame(model.coef_.flatten(), index=X.columns, columns=['Coefficient'])
 
     return {
         "model": model,
