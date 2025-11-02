@@ -207,4 +207,6 @@ marimo/_lsp/
 __marimo__/
 
 # Data files
-data/all_games_2024-25.csv
+data/
+data/**
+*.csv
