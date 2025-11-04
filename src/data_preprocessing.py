@@ -122,26 +122,51 @@ def preprocess_player_data(player_logs_df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame limpo e pronto para análise.
     """
-    # Lista de colunas que devem ser numéricas
-    numeric_cols = []
+    if player_logs_df.empty:
+        return player_logs_df
     
+    # Cópia para evitar mutação
+    df = player_logs_df.copy()
+    
+    # Lista de colunas que devem ser numéricas (baseado na documentação da NBA API)
+    numeric_cols = [
+        'MIN', 'FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT',
+        'FTM', 'FTA', 'FT_PCT', 'OREB', 'DREB', 'REB', 'AST',
+        'STL', 'BLK', 'TOV', 'PF', 'PTS', 'PLUS_MINUS'
+    ]
+    
+    # Converte apenas as colunas que existem no DataFrame
     for col in numeric_cols:
-        if col in player_logs_df.columns:
-            player_logs_df[col] = pd.to_numeric(player_logs_df[col], errors='coerce')
-            
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
     # Converte e ordena pela data do jogo se a coluna existir
-    if 'GAME_DATE' in player_logs_df.columns:
-        player_logs_df['GAME_DATE'] = pd.to_datetime(player_logs_df['GAME_DATE'], errors='coerce')
-        player_logs_df = player_logs_df.sort_values(by='GAME_DATE').reset_index(drop=True)
+    if 'GAME_DATE' in df.columns:
+        df['GAME_DATE'] = pd.to_datetime(df['GAME_DATE'], errors='coerce')
+        df = df.sort_values(by='GAME_DATE').reset_index(drop=True)
     else:
-        player_logs_df = player_logs_df.reset_index(drop=True)
+        df = df.reset_index(drop=True)
 
-    # Criar médias móveis para jogadores
-    for stat in numeric_cols:
-        if stat in player_logs_df.columns:
-            player_logs_df[f'AVG_5G_{stat}'] = player_logs_df.groupby('PLAYER_ID')[stat].shift(1).rolling(window=5, min_periods=1).mean()
+    # Criar médias móveis para jogadores (apenas para colunas que existem)
+    stats_for_rolling = ['PTS', 'REB', 'AST', 'FG_PCT', 'MIN']
+    
+    if 'PLAYER_ID' in df.columns:
+        for stat in stats_for_rolling:
+            if stat in df.columns:
+                df[f'AVG_5G_{stat}'] = df.groupby('PLAYER_ID')[stat].shift(1).rolling(window=5, min_periods=1).mean()
 
-    # Só aplicar dropna se houver colunas na lista numeric_cols
-    if numeric_cols:
-        return player_logs_df.dropna(subset=numeric_cols)
-    return player_logs_df
+    # Remove linhas onde TODAS as colunas numéricas importantes são NaN
+    critical_cols = ['PTS', 'REB', 'AST', 'MIN']
+    existing_critical = [col for col in critical_cols if col in df.columns]
+    
+    if existing_critical:
+        # Remove apenas linhas onde TODAS as colunas críticas são NaN
+        df = df.dropna(how='all', subset=existing_critical)
+    
+    # Preenche valores NaN restantes com 0 para estatísticas numéricas
+    # (comum em jogos onde o jogador não jogou)
+    existing_numeric = [col for col in numeric_cols if col in df.columns]
+    if existing_numeric:
+        df[existing_numeric] = df[existing_numeric].fillna(0)
+    
+    return df

@@ -34,22 +34,113 @@ st.markdown("""
 - O time fará X Assistências no jogo?
 
 **Instruções:**
-1.  **Escolha a Variável Dependente (Y):** Selecione a estatística que você deseja prever.
-2.  **Escolha as Variáveis Independentes (X):** Selecione uma ou mais estatísticas que você acredita que influenciam a variável dependente.
-3.  Clique em **'Executar Análise'** para treinar o modelo e visualizar os resultados.
+1.  **Escolha o(s) Jogador(es):** Selecione um ou mais jogadores para análise.
+2.  **Escolha a Variável Dependente (Y):** Selecione a estatística que você deseja prever.
+3.  **Escolha as Variáveis Independentes (X):** Selecione uma ou mais estatísticas que você acredita que influenciam a variável dependente.
+4.  Clique em **'Executar Análise'** para treinar o modelo e visualizar os resultados.
 """)
 
 # Verifica se os dados foram carregados e estão no estado da sessão
-if 'team_data' not in st.session_state or st.session_state['team_data'].empty:
-    st.error("Os dados não foram carregados. Por favor, volte para a página principal (app.py) para iniciar o carregamento.")
+if 'player_data' not in st.session_state or st.session_state['player_data'].empty:
+    st.error("Os dados dos jogadores não foram carregados. Por favor, volte para a página principal (app.py) para iniciar o carregamento.")
 else:
-    df = st.session_state['team_data']
+    player_df = st.session_state['player_data']
+
+    # --- SELEÇÃO DE JOGADORES ---
+    st.subheader("🏀 Seleção de Jogadores")
+    
+    # Identifica a coluna de nome do jogador
+    name_column = None
+    for col in ['PLAYER_NAME', 'Player_Name', 'PLAYER', 'Player']:
+        if col in player_df.columns:
+            name_column = col
+            break
+    
+    if not name_column:
+        st.error("Não foi possível identificar a coluna com os nomes dos jogadores nos dados carregados.")
+        st.info(f"Colunas disponíveis: {', '.join(player_df.columns.tolist())}")
+        st.stop()
+    
+    # Obtém lista única de jogadores
+    available_players = sorted(player_df[name_column].unique().tolist())
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        selected_players = st.multiselect(
+            "Selecione um ou mais jogadores para análise:",
+            options=available_players,
+            default=[available_players[0]] if available_players else [],
+            help="Você pode selecionar múltiplos jogadores para análise comparativa"
+        )
+    
+    with col2:
+        st.metric("Jogadores disponíveis", len(available_players))
+        st.metric("Jogadores selecionados", len(selected_players))
+    
+    if not selected_players:
+        st.warning("⚠️ Por favor, selecione pelo menos um jogador para continuar com a análise.")
+        st.stop()
+    
+    # Filtra dados pelos jogadores selecionados
+    df = player_df[player_df[name_column].isin(selected_players)].copy()
+    
+    st.success(f"✓ {len(selected_players)} jogador(es) selecionado(s): {', '.join(selected_players)}")
+    
+    # Mostra estatísticas resumidas dos jogadores selecionados
+    with st.expander("📊 Estatísticas dos Jogadores Selecionados"):
+        stats_cols = ['PTS', 'REB', 'AST', 'FG_PCT', 'FG3_PCT', 'FT_PCT', 'MIN']
+        available_stats = [col for col in stats_cols if col in df.columns]
+        
+        if available_stats:
+            summary_stats = df.groupby(name_column)[available_stats].agg(['mean', 'std', 'min', 'max'])
+            st.dataframe(summary_stats.round(2), use_container_width=True)
+        else:
+            st.warning("Estatísticas básicas não encontradas nos dados.")
+
+    # Lista detalhada de jogadores (similar à regressão logística)
+    with st.expander("📋 Lista Detalhada de Jogadores Selecionados"):
+        for player in selected_players:
+            player_data = df[df[name_column] == player]
+            
+            col1, col2, col3 = st.columns([2, 1, 1])
+            
+            with col1:
+                st.markdown(f"### {player}")
+            
+            with col2:
+                st.metric("Jogos", len(player_data))
+            
+            with col3:
+                if 'MIN' in player_data.columns:
+                    avg_min = player_data['MIN'].mean()
+                    st.metric("Min/Jogo", f"{avg_min:.1f}")
+            
+            # Métricas principais
+            metrics_row = st.columns(5)
+            
+            metric_configs = [
+                ('PTS', 'Pontos', '🏀'),
+                ('REB', 'Rebotes', '🔄'),
+                ('AST', 'Assistências', '🎯'),
+                ('FG_PCT', 'FG%', '📊'),
+                ('FG3_PCT', '3P%', '🎪')
+            ]
+            
+            for idx, (col_name, label, icon) in enumerate(metric_configs):
+                if col_name in player_data.columns:
+                    avg_value = player_data[col_name].mean()
+                    if 'PCT' in col_name:
+                        metrics_row[idx].metric(f"{icon} {label}", f"{avg_value:.1%}")
+                    else:
+                        metrics_row[idx].metric(f"{icon} {label}", f"{avg_value:.1f}")
+            
+            st.divider()
 
     # Define as colunas numéricas que podem ser usadas como variáveis
     numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-    # Remove a variável 'WIN' que é categórica por natureza
-    if 'WIN' in numeric_cols:
-        numeric_cols.remove('WIN')
+    # Remove colunas de ID que não são úteis para análise
+    exclude_cols = ['PLAYER_ID', 'TEAM_ID', 'GAME_ID', 'WIN']
+    numeric_cols = [col for col in numeric_cols if col not in exclude_cols]
 
     # --- Abas de Navegação ---
     tabs = st.tabs(["📊 Análise Principal", "📈 Exploração de Dados", "🎁 Análise de Resíduos"])
@@ -83,82 +174,118 @@ else:
             if not independent_vars:
                 st.warning("Por favor, selecione pelo menos uma variável independente.")
             else:
-                with st.spinner("Treinando o modelo de Regressão Linear e gerando gráficos..."):
-                    results = train_linear_regression(df, independent_vars, dependent_var)
-
-                    st.success("Análise concluída!")
-
-                    # --- Seção de Resultados ---
-                    st.subheader("Resultados do Modelo")
-
-                    # Exibe a equação da regressão
-                    coef_str = " + ".join([f"({results['coefficients'].loc[var, 'Coefficient']:.4f} × {var})" for var in independent_vars])
-                    st.markdown("**Equação de Regressão Ajustada:**")
-                    st.latex(f"{dependent_var} = {results['intercept']:.4f} + {coef_str} + \\varepsilon")
-
-                    # Exibe métricas e coeficientes
-                    col_metric1, col_metric2, col_metric3 = st.columns(3)
-                    col_metric1.metric(label="Coeficiente de Determinação (R²)", value=f"{results['r2']:.4f}",
-                                      help="Quanto da variação em Y é explicada por X. Varia de 0 a 1.")
-                    col_metric2.metric(label="Erro Quadrático Médio (MSE)", value=f"{results['mse']:.4f}",
-                                      help="Média dos erros ao quadrado. Quanto menor, melhor.")
-                    col_metric3.metric(label="Raiz do MSE (RMSE)", value=f"{np.sqrt(results['mse']):.4f}",
-                                      help="Erro médio em unidades da variável Y.")
-
-                    st.write("**Coeficientes do Modelo:**")
-                    st.dataframe(results['coefficients'])
-                    st.info(
-                        f"""
-                        **Interpretação dos Coeficientes:** 
+                # Verifica quantidade de dados válidos antes de treinar
+                df_valid = df.dropna(subset=[dependent_var] + independent_vars)
+                
+                if len(df_valid) < 10:
+                    st.error(f"""
+                    ⚠️ Dados insuficientes para análise!
+                    
+                    - Total de registros: {len(df)}
+                    - Registros válidos (sem NaN): {len(df_valid)}
+                    - Mínimo necessário: 10
+                    
+                    Sugestões:
+                    1. Selecione outras variáveis com menos valores faltantes
+                    2. Selecione mais jogadores
+                    3. Verifique se os dados foram carregados corretamente
+                    """)
+                    
+                    # Mostra diagnóstico de valores faltantes
+                    with st.expander("📊 Diagnóstico de Valores Faltantes"):
+                        missing_stats = pd.DataFrame({
+                            'Valores Faltantes': df[independent_vars + [dependent_var]].isnull().sum(),
+                            'Percentual (%)': (df[independent_vars + [dependent_var]].isnull().sum() / len(df) * 100).round(2)
+                        })
+                        st.dataframe(missing_stats)
+                else:
+                    with st.spinner("Treinando o modelo de Regressão Linear e gerando gráficos..."):
+                        results = train_linear_regression(df, independent_vars, dependent_var)
                         
-                        Cada coeficiente (β) representa o quanto a variável dependente ({dependent_var}) 
-                        muda, em média, para cada aumento de **uma unidade** na variável independente correspondente, 
-                        **mantendo todas as outras variáveis constantes** (ceteris paribus).
+                        st.success("Análise concluída!")
                         
-                        **Exemplo:** Se o coeficiente de 'FG%' for 2.5, significa que para cada aumento de 1% 
-                        na porcentagem de arremessos convertidos, espera-se um aumento de 2.5 pontos em {dependent_var}.
-                        """
-                    )
+                        # Mostra aviso se houve imputação
+                        if df[independent_vars].isnull().any().any():
+                            st.info(f"""
+                            ℹ️ **Nota sobre valores faltantes:**
+                            Alguns valores faltantes foram detectados e preenchidos automaticamente 
+                            com a mediana das respectivas variáveis para permitir a análise.
+                            
+                            - Registros originais: {len(df)}
+                            - Registros após limpeza: {len(df_valid)}
+                            """)
 
-                    # --- Seção de Gráficos ---
-                    st.subheader("Visualizações Gráficas")
+                        # --- Seção de Resultados ---
+                        st.subheader("Resultados do Modelo")
 
-                    # Gráfico 1: Diagrama de Dispersão com Linha de Regressão
-                    st.markdown("#### 1. Diagrama de Dispersão com Linha de Regressão")
-                    st.pyplot(plot_regression_scatter(
-                        y_test=results['y_test'],
-                        y_pred=results['y_pred'],
-                        x_test_col=results['X_test'].iloc[:, 0],
-                        x_label=independent_vars[0],
-                        y_label=dependent_var
-                    ))
-                    st.caption(f"Este gráfico mostra a relação entre a variável dependente ({dependent_var}) e a primeira variável independente selecionada ({independent_vars[0]}), com a linha de regressão ajustada pelo modelo.")
+                        # Exibe a equação da regressão
+                        coef_str = " + ".join([f"({results['coefficients'].loc[var, 'Coefficient']:.4f} × {var})" for var in independent_vars])
+                        st.markdown("**Equação de Regressão Ajustada:**")
+                        st.latex(f"{dependent_var} = {results['intercept']:.4f} + {coef_str} + \\varepsilon")
 
-                    # Gráfico 2: Previsão vs. Realidade
-                    st.markdown("#### 2. Gráfico de Previsão vs. Realidade")
-                    st.pyplot(plot_predicted_vs_actual(
-                        y_test=results['y_test'],
-                        y_pred=results['y_pred'],
-                        y_label=dependent_var
-                    ))
-                    st.caption("Este gráfico compara os valores reais com os valores previstos pelo modelo. Pontos próximos à linha tracejada vermelha indicam predições precisas.")
+                        # Exibe métricas e coeficientes
+                        col_metric1, col_metric2, col_metric3 = st.columns(3)
+                        col_metric1.metric(label="Coeficiente de Determinação (R²)", value=f"{results['r2']:.4f}",
+                                          help="Quanto da variação em Y é explicada por X. Varia de 0 a 1.")
+                        col_metric2.metric(label="Erro Quadrático Médio (MSE)", value=f"{results['mse']:.4f}",
+                                          help="Média dos erros ao quadrado. Quanto menor, melhor.")
+                        col_metric3.metric(label="Raiz do MSE (RMSE)", value=f"{np.sqrt(results['mse']):.4f}",
+                                          help="Erro médio em unidades da variável Y.")
 
-                    # Gráfico 3: Gráfico de Tendência com Intervalo de Confiança
-                    st.markdown("#### 3. Gráfico de Tendência com Intervalo de Confiança de 95%")
-                    st.pyplot(plot_regression_confidence_interval(
-                        df=df,
-                        x_var=independent_vars,
-                        y_var=dependent_var
-                    ))
-                    st.caption(f"Visualiza a tendência entre {dependent_var} e {independent_vars}. A área sombreada representa o intervalo de confiança de 95% para a linha de regressão, indicando a incerteza da estimativa.")
+                        st.write("**Coeficientes do Modelo:**")
+                        st.dataframe(results['coefficients'])
+                        st.info(
+                            f"""
+                            **Interpretação dos Coeficientes:** 
+                            
+                            Cada coeficiente (β) representa o quanto a variável dependente ({dependent_var}) 
+                            muda, em média, para cada aumento de **uma unidade** na variável independente correspondente, 
+                            **mantendo todas as outras variáveis constantes** (ceteris paribus).
+                            
+                            **Exemplo:** Se o coeficiente de 'FG%' for 2.5, significa que para cada aumento de 1% 
+                            na porcentagem de arremessos convertidos, espera-se um aumento de 2.5 pontos em {dependent_var}.
+                            """
+                        )
 
-                    # Gráfico 4: Matriz de Confusão (Adaptada)
-                    st.markdown("#### 4. Matriz de Confusão (Adaptada para Regressão)")
-                    st.pyplot(plot_regression_confusion_matrix(
-                        y_test=results['y_test'],
-                        y_pred=results['y_pred']
-                    ))
-                    st.caption("Como a matriz de confusão é para modelos de classificação, adaptamos a análise: os valores foram classificados como 'Acima da Média' ou 'Abaixo da Média' para avaliar a capacidade do modelo de prever a magnitude do resultado.")
+                        # --- Seção de Gráficos ---
+                        st.subheader("Visualizações Gráficas")
+
+                        # Gráfico 1: Diagrama de Dispersão com Linha de Regressão
+                        st.markdown("#### 1. Diagrama de Dispersão com Linha de Regressão")
+                        st.pyplot(plot_regression_scatter(
+                            y_test=results['y_test'],
+                            y_pred=results['y_pred'],
+                            x_test_col=results['X_test'].iloc[:, 0],
+                            x_label=independent_vars[0],
+                            y_label=dependent_var
+                        ))
+                        st.caption(f"Este gráfico mostra a relação entre a variável dependente ({dependent_var}) e a primeira variável independente selecionada ({independent_vars[0]}), com a linha de regressão ajustada pelo modelo.")
+
+                        # Gráfico 2: Previsão vs. Realidade
+                        st.markdown("#### 2. Gráfico de Previsão vs. Realidade")
+                        st.pyplot(plot_predicted_vs_actual(
+                            y_test=results['y_test'],
+                            y_pred=results['y_pred'],
+                            y_label=dependent_var
+                        ))
+                        st.caption("Este gráfico compara os valores reais com os valores previstos pelo modelo. Pontos próximos à linha tracejada vermelha indicam predições precisas.")
+
+                        # Gráfico 3: Gráfico de Tendência com Intervalo de Confiança
+                        st.markdown("#### 3. Gráfico de Tendência com Intervalo de Confiança de 95%")
+                        st.pyplot(plot_regression_confidence_interval(
+                            df=df,
+                            x_var=independent_vars,
+                            y_var=dependent_var
+                        ))
+                        st.caption(f"Visualiza a tendência entre {dependent_var} e {independent_vars}. A área sombreada representa o intervalo de confiança de 95% para a linha de regressão, indicando a incerteza da estimativa.")
+
+                        # Gráfico 4: Matriz de Confusão (Adaptada)
+                        st.markdown("#### 4. Matriz de Confusão (Adaptada para Regressão)")
+                        st.pyplot(plot_regression_confusion_matrix(
+                            y_test=results['y_test'],
+                            y_pred=results['y_pred']
+                        ))
+                        st.caption("Como a matriz de confusão é para modelos de classificação, adaptamos a análise: os valores foram classificados como 'Acima da Média' ou 'Abaixo da Média' para avaliar a capacidade do modelo de prever a magnitude do resultado.")
 
     # ============================================================================
     # ABA 2: EXPLORAÇÃO DE DADOS
@@ -174,7 +301,16 @@ else:
 
         # Distribuição das Variáveis
         st.markdown("#### 📈 Distribuição das Variáveis")
-        fig, axes = plt.subplots(nrows=(len(numeric_cols) + 3) // 4, ncols=4, figsize=(16, 3 * ((len(numeric_cols) + 3) // 4)))
+        num_plots = len(numeric_cols)
+        ncols = 4
+        nrows = (num_plots + ncols - 1) // ncols
+        
+        # Fix: Adjust figure size to prevent tight_layout warnings
+        fig, axes = plt.subplots(
+            nrows=nrows, 
+            ncols=ncols, 
+            figsize=(18, 4 * nrows)  # Increased width from 16 to 18
+        )
         fig.suptitle('Distribuição das Variáveis', fontsize=16, fontweight='bold')
 
         for ax, column in zip(axes.flatten(), numeric_cols):
@@ -183,7 +319,11 @@ else:
             ax.set_xlabel('')
             ax.set_ylabel('')
 
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        # Hide unused subplots
+        for ax in axes.flatten()[len(numeric_cols):]:
+            ax.set_visible(False)
+
+        plt.tight_layout()
         st.pyplot(fig)
 
         # Matriz de Correlação

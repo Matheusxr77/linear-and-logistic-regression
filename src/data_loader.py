@@ -1,7 +1,7 @@
+from nba_api.stats.endpoints import teamgamelog, leaguegamefinder, playergamelog, commonplayerinfo
+from nba_api.stats.static import teams
 import pandas as pd
 import time
-from nba_api.stats.static import teams
-from nba_api.stats.endpoints import leaguegamefinder, commonteamroster, playergamelog
 
 # Adicionar um cabeçalho de User-Agent é uma boa prática para evitar problemas de conexão.
 HEADERS = {
@@ -104,60 +104,68 @@ def get_all_games_for_season(season: str) -> pd.DataFrame:
         print(f"Erro ao buscar todos os jogos da temporada: {e}")
         return pd.DataFrame()
 
-def get_player_game_logs(team_id: int, season: str) -> pd.DataFrame:
-    """
-    Obtém os logs de jogos de todos os jogadores de um time em uma temporada.
-
-    Args:
-        team_id (int): O ID do time.
-        season (str): A temporada no formato 'YYYY-YY'.
-
-    Returns:
-        pd.DataFrame: DataFrame com os logs de jogos de todos os jogadores.
-    """
-    print(f"Buscando elenco do time ID {team_id}...")
+def get_player_info(player_id: int) -> dict:
+    """Busca informações do jogador incluindo o nome."""
     try:
-        roster_endpoint = commonteamroster.CommonTeamRoster(
-            team_id=team_id,
-            season=season
-        )
-        time.sleep(0.6)
-        roster_dfs = _get_data_frames_with_retry(roster_endpoint, max_retries=5, backoff_factor=1)
-        if not roster_dfs:
-            print("Não foi possível obter o elenco.")
-            return pd.DataFrame()
-        roster_df = roster_dfs[0]
+        player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id)
+        df = player_info.get_data_frames()[0]
+        if not df.empty:
+            return {
+                'PLAYER_ID': player_id,
+                'PLAYER_NAME': df['DISPLAY_FIRST_LAST'].iloc[0] if 'DISPLAY_FIRST_LAST' in df.columns else None,
+                'FIRST_NAME': df['FIRST_NAME'].iloc[0] if 'FIRST_NAME' in df.columns else None,
+                'LAST_NAME': df['LAST_NAME'].iloc[0] if 'LAST_NAME' in df.columns else None
+            }
     except Exception as e:
-        print(f"Erro ao obter o elenco: {e}")
+        print(f"Erro ao buscar info do jogador {player_id}: {e}")
+    return None
+
+def get_player_game_logs(team_id: int, season: str = "2024-25") -> pd.DataFrame:
+    """
+    Carrega logs de jogos de todos os jogadores do time.
+    Adiciona o nome do jogador usando commonplayerinfo.
+    """
+    # Primeiro, pega os logs do time para identificar os jogadores
+    team_games = get_team_game_logs(team_id, season)
+    
+    if team_games.empty:
         return pd.DataFrame()
-
-    all_player_logs = []
-    # extrai corretamente os IDs dos jogadores
-    player_ids = roster_df['PLAYER_ID'].unique()
-    print(f"Encontrados {len(player_ids)} jogadores. Buscando logs de jogos individuais...")
-
-    for player_id in player_ids:
-        try:
-            player_endpoint = playergamelog.PlayerGameLog(
-                player_id=player_id,
-                season=season
-            )
-            player_dfs = _get_data_frames_with_retry(player_endpoint, max_retries=4, backoff_factor=0.8)
-            if not player_dfs:
-                print(f"Sem logs para o jogador ID {player_id}.")
-                continue
-            # player_dfs geralmente retorna uma lista; pegamos o primeiro DataFrame
-            player_log_df = player_dfs[0]
-            all_player_logs.append(player_log_df)
-            print(f"Logs obtidos para o jogador ID {player_id}.")
-            time.sleep(0.6)
-        except Exception as e:
-            print(f"Erro ao buscar logs para o jogador ID {player_id}: {e}")
-            continue
-            
-    if not all_player_logs:
+    
+    # Usa leaguegamefinder para pegar dados de todos os jogadores do time
+    print(f"   Buscando jogadores do time {team_id}...")
+    gamefinder = leaguegamefinder.LeagueGameFinder(
+        team_id_nullable=team_id,
+        season_nullable=season,
+        player_or_team_abbreviation='P'  # 'P' para jogadores
+    )
+    
+    all_player_games = gamefinder.get_data_frames()[0]
+    
+    if all_player_games.empty:
+        print("   Nenhum dado de jogador encontrado via LeagueGameFinder")
         return pd.DataFrame()
-
-    combined_logs = pd.concat(all_player_logs, ignore_index=True)
-    print("Logs de todos os jogadores combinados com sucesso.")
-    return combined_logs
+    
+    # Identifica jogadores únicos
+    unique_players = all_player_games['PLAYER_ID'].unique()
+    print(f"   {len(unique_players)} jogadores encontrados")
+    
+    # Busca informações de cada jogador (com rate limiting)
+    player_names = {}
+    for idx, player_id in enumerate(unique_players):
+        if idx > 0 and idx % 10 == 0:
+            print(f"   Processando jogador {idx}/{len(unique_players)}...")
+            time.sleep(1)  # Rate limiting
+        
+        info = get_player_info(player_id)
+        if info and info['PLAYER_NAME']:
+            player_names[player_id] = info['PLAYER_NAME']
+        else:
+            player_names[player_id] = f"Player_{player_id}"
+        
+        time.sleep(0.6)  # Rate limiting entre chamadas
+    
+    # Adiciona nomes aos dados
+    all_player_games['PLAYER_NAME'] = all_player_games['PLAYER_ID'].map(player_names)
+    
+    print(f"   Logs de todos os jogadores combinados com sucesso.")
+    return all_player_games

@@ -117,7 +117,17 @@ def plot_feature_importance(coefficients, title):
     """
     fig, ax = plt.subplots(figsize=(10, len(coefficients) * 0.5))
     coefficients_sorted = coefficients.reindex(coefficients.Coefficient.abs().sort_values(ascending=False).index)
-    sns.barplot(x='Coefficient', y=coefficients_sorted.index, data=coefficients_sorted, ax=ax, palette='viridis')
+    
+    # Fix: Assign y variable to hue and set legend=False
+    sns.barplot(
+        x='Coefficient', 
+        y=coefficients_sorted.index, 
+        data=coefficients_sorted, 
+        ax=ax, 
+        hue=coefficients_sorted.index,
+        palette='viridis',
+        legend=False
+    )
     ax.axvline(0, color='black', linewidth=0.8)
     ax.set_title(title)
     ax.set_xlabel('Impacto no Log-Odds da Vitória')
